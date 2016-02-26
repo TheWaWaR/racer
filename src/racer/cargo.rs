@@ -404,11 +404,7 @@ fn find_cratesio_src_dirs(d: PathBuf) -> Vec<PathBuf> {
     for entry in vectry!(read_dir(d)) {
         let path = vectry!(entry).path();
         if is_dir(path.as_path()) {
-            if let Some(ref fname) = path.file_name().and_then(|s| s.to_str()) {
-                if fname.starts_with("github.com-") {
-                    out.push(path.clone());
-                }
-            }
+            out.push(path.clone());
         }
     }
     out
