@@ -70,12 +70,13 @@ fn empty_if_no_branch() {
 
 fn find_src_via_lockfile(kratename: &str, cargofile: &Path) -> Option<PathBuf> {
     if let Some(packages) = get_cargo_packages(cargofile) {
+        debug!("find_src_via_lockfile: packages={:?}", packages);
         for package in packages {
             if let Some(package_source) = package.source.clone() {
                 if let Some(tomlfile) = find_cargo_tomlfile(package_source.as_path()) {
                     let package_name = get_package_name(tomlfile.as_path());
 
-                    debug!("find_src_via_lockfile package_name: {}", package_name);
+                    debug!("find_src_via_lockfile package_name: {}, tomlfile={:?}", package_name, tomlfile);
 
                     if package_name == kratename {
                         return package.source;
@@ -84,6 +85,7 @@ fn find_src_via_lockfile(kratename: &str, cargofile: &Path) -> Option<PathBuf> {
             }
         }
     }
+    debug!("find_src_via_lockfile: packages=<~None~>");
     None
 }
 
@@ -103,22 +105,43 @@ fn get_cargo_packages(cargofile: &Path) -> Option<Vec<PackageInfo>> {
 
     let packages_array = match lock_table.get("package") {
         Some(&toml::Value::Array(ref t1)) => t1,
-        _ => return None
+        _ =>  {
+            debug!("local_table has no `package`, return None");
+            return None
+        }
     };
 
     let mut result = Vec::new();
 
+    debug!("packages_array={:?}", packages_array);
     for package_element in packages_array {
+        debug!("package_element={:?}", package_element);
         if let &toml::Value::Table(ref package_table) = package_element {
+            debug!("package_table={:?}", package_table);
+
             if let Some(&toml::Value::String(ref package_name)) = package_table.get("name") {
-                let package_version = otry!(getstr(package_table, "version"));
-                let package_source = otry!(getstr(package_table, "source"));
+                let package_version = match getstr(package_table, "version") {
+                    Some(v) => v,
+                    None => {
+                        debug!("package_name={:?}, package_version=None", package_name);
+                        continue;
+                    }
+                };
+                let package_source = match getstr(package_table, "source") {
+                    Some(v) => v,
+                    None => {
+                        debug!("package_name={:?}, package_source=None", package_name);
+                        continue;
+                    }
+                };
 
                 let package_source = match package_source.split("+").nth(0) {
                     Some("registry") => {
+                        debug!("match registry");
                         get_versioned_cratefile(package_name, &package_version, cargofile)
                     },
                     Some("git") => {
+                        debug!("match git");
                         let sha1 = otry!(package_source.split("#").last());
                         let mut d = otry!(get_cargo_rootdir(cargofile));
                         let branch = get_branch_from_source(&package_source);
@@ -130,7 +153,10 @@ fn get_cargo_packages(cargofile: &Path) -> Option<Vec<PackageInfo>> {
 
                         Some(d)
                     },
-                    _ => return None
+                    _ => {
+                        debug!("return None; >> package_version={:?}, package_source={:?}", package_version, package_source);
+                        return None
+                    }
                 };
 
                 result.push(PackageInfo{
@@ -141,6 +167,7 @@ fn get_cargo_packages(cargofile: &Path) -> Option<Vec<PackageInfo>> {
             }
         }
     }
+    debug!("result={:?}", result);
     Some(result)
 }
 
@@ -185,7 +212,7 @@ fn get_cargo_rootdir(cargofile: &Path) -> Option<PathBuf> {
 
     let mut d = otry!(env::home_dir());
 
-    // try multirust first, since people with multirust installed will often still 
+    // try multirust first, since people with multirust installed will often still
     // have an old .cargo directory lying around
     d.push(".multirust");
 
@@ -252,7 +279,7 @@ fn get_versioned_cratefile(kratename: &str, version: &str, cargofile: &Path) -> 
                 if let Some(path) = reader
                     .map(|entry| entry.unwrap().path())
                     .find(|path| path.to_str().unwrap().starts_with(start_name)) {
-                        d = path.clone();                        
+                        d = path.clone();
                     } else {
                         continue;
                     }
@@ -262,7 +289,7 @@ fn get_versioned_cratefile(kratename: &str, version: &str, cargofile: &Path) -> 
         } else {
             d.push(kratename.to_owned() + "-" + &version);
         }
-        
+
         d.push("src");
         debug!("crate path {:?}",d);
 
@@ -482,16 +509,18 @@ fn find_cargo_tomlfile(currentfile: &Path) -> Option<PathBuf> {
 pub fn get_crate_file(kratename: &str, from_path: &Path) -> Option<PathBuf> {
     if let Some(tomlfile) = find_cargo_tomlfile(from_path) {
         // look in the lockfile first, if there is one
-        debug!("get_crate_file tomlfile is {:?}", tomlfile);
         let mut lockfile = tomlfile.clone();
         lockfile.pop();
         lockfile.push("Cargo.lock");
+        debug!("get_crate_file tomlfile={:?}, lockfile={:?}", tomlfile, lockfile);
         if path_exists(lockfile.as_path()) {
+            debug!("lockfile path_exists, going to invoke find_src_via_lockfile");
             if let Some(f) = find_src_via_lockfile(kratename, &lockfile) {
                 return Some(f);
             }
         }
 
+        debug!("=.= no luck find_src_via_tomlfile");
         // oh, no luck with the lockfile. Try the tomlfile
         return find_src_via_tomlfile(kratename, &tomlfile)
     }
