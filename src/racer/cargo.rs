@@ -142,12 +142,21 @@ fn get_cargo_packages(cargofile: &Path) -> Option<Vec<PackageInfo>> {
                     },
                     Some("git") => {
                         debug!("match git");
-                        let sha1 = otry!(package_source.split("#").last());
-                        let mut d = otry!(get_cargo_rootdir(cargofile));
+                        let sha1 = match package_source.split("#").last() {
+                            Some(v) => v,
+                            None => {return None;}
+                        };
+                        let mut d = match get_cargo_rootdir(cargofile) {
+                            Some(v) => v,
+                            None => {return None;}
+                        };
                         let branch = get_branch_from_source(&package_source);
                         d.push("git");
                         d.push("checkouts");
-                        d = otry!(find_git_src_dir(d, package_name, &sha1, branch));
+                        d = match find_git_src_dir(d, package_name, &sha1, branch) {
+                            Some(v) => v,
+                            None => {return None;}
+                        };
                         d.push("src");
                         d.push("lib.rs");
 
@@ -210,7 +219,10 @@ fn get_cargo_rootdir(cargofile: &Path) -> Option<PathBuf> {
         None => ()
     };
 
-    let mut d = otry!(env::home_dir());
+    let mut d = match env::home_dir() {
+        Some(v) => v,
+        None => {return None;}
+    };
 
     // try multirust first, since people with multirust installed will often still
     // have an old .cargo directory lying around
@@ -260,7 +272,10 @@ fn get_cargo_rootdir(cargofile: &Path) -> Option<PathBuf> {
 }
 
 fn get_versioned_cratefile(kratename: &str, version: &str, cargofile: &Path) -> Option<PathBuf> {
-    let mut d = otry!(get_cargo_rootdir(cargofile));
+    let mut d = match get_cargo_rootdir(cargofile) {
+        Some(v) => v,
+        None => {return None;}
+    };
 
     debug!("get_versioned_cratefile: cargo rootdir is {:?}",d);
     d.push("registry");
@@ -339,14 +354,20 @@ fn find_src_via_tomlfile(kratename: &str, cargofile: &Path) -> Option<PathBuf> {
         };
 
         let mut lib_name = package_name;
-        let mut lib_path = otry!(cargofile.parent()).join("src").join("lib.rs");
+        let mut lib_path = match cargofile.parent() {
+            Some(v) => v,
+            None => {return None;}
+        }.join("src").join("lib.rs");
         if let Some(&toml::Value::Table(ref t)) = table.get("lib") {
             if let Some(&toml::Value::String(ref name)) = t.get("name") {
                 lib_name = name;
             }
             if let Some(&toml::Value::String(ref pathstr)) = t.get("path") {
                 let p = Path::new(pathstr);
-                lib_path = otry!(cargofile.parent()).join(p);
+                lib_path = match cargofile.parent() {
+                    Some(v) => v,
+                    None => {return None;}
+                }.join(p);
             }
         }
 
@@ -402,13 +423,18 @@ fn get_local_packages(table: &BTreeMap<String, toml::Value>, cargofile: &Path, s
         let package_source = match *value {
             toml::Value::Table(ref t) => {
                 // local directory
-                let relative_path = otry!(getstr(t, "path"));
+                let relative_path = match getstr(t, "path") {
+                    Some(v) => v,
+                    None => {return None}
+                };
 
-                Some(otry!(cargofile.parent())
-                    .join(relative_path)
-                    .join("src")
-                    .join("lib.rs"))
-                },
+                match cargofile.parent() {
+                    Some(v) => Some(v.join(relative_path)
+                                    .join("src")
+                                    .join("lib.rs")),
+                    None => {return None;}
+                }
+            },
             toml::Value::String(ref version) => {
                 // versioned crate
                 package_version = Some(version.to_owned());

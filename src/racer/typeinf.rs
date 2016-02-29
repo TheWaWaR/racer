@@ -236,13 +236,22 @@ pub fn get_type_from_match_arm(m: &Match, msrc: Src, session: &Session) -> Optio
     // match stmt may be incomplete (half written) in the real code
 
     // skip to end of match arm pattern so we can search backwards
-    let arm = otry!((&msrc[m.point..]).find("=>")) + m.point;
+    let arm = match (&msrc[m.point..]).find("=>") {
+        Some(v) => v + m.point,
+        None => {return None;}
+    };
     let scopestart = scopes::scope_start(msrc, arm);
 
-    let stmtstart = otry!(scopes::find_stmt_start(msrc, scopestart-1));
+    let stmtstart = match scopes::find_stmt_start(msrc, scopestart-1) {
+        Some(v) => v,
+        None => {return None;}
+    };
     debug!("PHIL preblock is {} {}", stmtstart, scopestart);
     let preblock = &msrc[stmtstart..scopestart];
-    let matchstart = otry!(preblock.rfind("match ")) + stmtstart;
+    let matchstart = match preblock.rfind("match ") {
+        Some(v) => v + stmtstart,
+        None => {return None;}
+    };
 
     let lhs_start = scopes::get_start_of_pattern(&msrc, arm);
     let lhs = &msrc[lhs_start..arm];
